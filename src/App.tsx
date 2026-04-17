@@ -573,7 +573,7 @@ function getArcPath(
 }
 
 export default function App() {
-  const defaultDestinations = ['southeast_asia'];
+  const defaultDestinations = ['southeast_asia', 'country:US'];
   const [rows, setRows] = useState<FlowRecord[]>([]);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
