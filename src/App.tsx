@@ -3,12 +3,15 @@ import {
   ComposableMap,
   Geographies,
   Geography,
-  Line,
   Marker,
 } from 'react-simple-maps';
+import { geoEqualEarth } from 'd3-geo';
 import { feature } from 'topojson-client';
 import worldData from 'world-atlas/countries-110m.json';
 import tankerTrafficSampleText from '../tankertraffic2021-2023.txt?raw';
+
+const MAP_WIDTH = 800;
+const MAP_HEIGHT = 600;
 
 const worldFeatures = feature(
   worldData as unknown as Parameters<typeof feature>[0],
@@ -537,16 +540,51 @@ function formatPeriodLabel(period: { year: number; month: number }) {
   return parseMonthLabel(period.year, period.month);
 }
 
+function getMarkerRadius(barrels: number) {
+  const safeBarrels = Math.max(barrels, 0);
+  return Math.min(12, 2.5 + Math.sqrt(safeBarrels / 100000) * 1.7);
+}
+
+function getMarkerOffset(barrels: number) {
+  const radius = getMarkerRadius(barrels);
+  return {
+    lon: Math.min(3.8, 0.9 + radius * 0.22),
+    lat: Math.min(1.5, 0.35 + radius * 0.08),
+  };
+}
+
+function getArcPath(
+  fromPoint: [number, number],
+  toPoint: [number, number],
+) {
+  const [x1, y1] = fromPoint;
+  const [x2, y2] = toPoint;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const curveHeight = Math.max(18, distance * 0.22);
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  const norm = Math.max(distance, 1);
+  const controlX = midX - (dy / norm) * curveHeight;
+  const controlY = midY + (dx / norm) * curveHeight;
+
+  return `M ${x1} ${y1} Q ${controlX} ${controlY} ${x2} ${y2}`;
+}
+
 export default function App() {
+  const defaultDestinations = ['southeast_asia'];
   const [rows, setRows] = useState<FlowRecord[]>([]);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedCargo, setSelectedCargo] = useState<string>('all');
-  const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
+  const [selectedDestinations, setSelectedDestinations] = useState<string[]>(
+    defaultDestinations,
+  );
   const [showMarkers, setShowMarkers] = useState(true);
   const [minBarrels, setMinBarrels] = useState(0);
   const [useTimeline, setUseTimeline] = useState(true);
-  const [isTimelinePlaying, setIsTimelinePlaying] = useState(false);
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState(true);
   const [timelineIndex, setTimelineIndex] = useState(0);
 
   const dataset = useMemo(
@@ -691,6 +729,14 @@ export default function App() {
     [filtered],
   );
   const maxBarrels = ranked[0]?.barrels || 1;
+  const mapProjection = useMemo(
+    () =>
+      geoEqualEarth()
+        .translate([MAP_WIDTH / 2, MAP_HEIGHT / 2])
+        .scale(190)
+        .center([20, 3]),
+    [],
+  );
 
   const sourceMarkerTotals = useMemo(() => {
     const totals = new Map<string, number>();
@@ -723,19 +769,14 @@ export default function App() {
       name: COUNTRY_NAMES[code] || code,
     }));
   }, [filtered]);
-  const maxMarkerBarrels = useMemo(() => {
-    const sourceMax = sourceMarkerTotals.reduce(
-      (max, marker) => Math.max(max, marker.barrels),
-      0,
+  const overlappingMarkerCodes = useMemo(() => {
+    const sourceCodes = new Set(sourceMarkerTotals.map((marker) => marker.code));
+    return new Set(
+      destinationMarkerTotals
+        .map((marker) => marker.code)
+        .filter((code) => sourceCodes.has(code)),
     );
-    const destinationMax = destinationMarkerTotals.reduce(
-      (max, marker) => Math.max(max, marker.barrels),
-      0,
-    );
-
-    return Math.max(sourceMax, destinationMax, 1);
   }, [destinationMarkerTotals, sourceMarkerTotals]);
-
   function toggleDestination(value: string) {
     setSelectedDestinations((current) =>
       current.includes(value)
@@ -774,10 +815,10 @@ export default function App() {
     setSelectedYear('all');
     setSelectedMonth('all');
     setSelectedCargo('all');
-    setSelectedDestinations([]);
+    setSelectedDestinations(defaultDestinations);
     setMinBarrels(0);
     setUseTimeline(true);
-    setIsTimelinePlaying(false);
+    setIsTimelinePlaying(true);
     setTimelineIndex(0);
   }
 
@@ -807,11 +848,11 @@ export default function App() {
                 setSelectedYear('all');
                 setSelectedMonth('all');
                 setSelectedCargo('all');
-                setSelectedDestinations([]);
+                setSelectedDestinations(defaultDestinations);
                 setMinBarrels(0);
                 setShowMarkers(true);
                 setUseTimeline(true);
-                setIsTimelinePlaying(false);
+                setIsTimelinePlaying(true);
                 setTimelineIndex(0);
               }}
             >
@@ -956,7 +997,40 @@ export default function App() {
             </div>
 
             <div className="map-frame">
-              <ComposableMap projectionConfig={{ scale: 150 }}>
+              <ComposableMap
+                width={MAP_WIDTH}
+                height={MAP_HEIGHT}
+                projection="geoEqualEarth"
+                projectionConfig={{
+                  scale: 190,
+                  center: [20, 3],
+                }}
+              >
+                <defs>
+                  {ranked.map((row, index) => {
+                    const from = COUNTRY_CENTROIDS[row.origin_code];
+                    const to = COUNTRY_CENTROIDS[row.destination_code];
+                    if (!from || !to) return null;
+                    const fromPoint = mapProjection(from);
+                    const toPoint = mapProjection(to);
+                    if (!fromPoint || !toPoint) return null;
+
+                    return (
+                      <linearGradient
+                        key={`gradient-${flowKey(row)}-${index}`}
+                        id={`flow-gradient-${index}`}
+                        gradientUnits="userSpaceOnUse"
+                        x1={fromPoint[0]}
+                        y1={fromPoint[1]}
+                        x2={toPoint[0]}
+                        y2={toPoint[1]}
+                      >
+                        <stop offset="0%" stopColor="rgba(34, 197, 94, 0.72)" />
+                        <stop offset="100%" stopColor="rgba(249, 115, 22, 0.72)" />
+                      </linearGradient>
+                    );
+                  })}
+                </defs>
                 <Geographies geography={worldFeatures}>
                   {({ geographies }: { geographies: Array<{ rsmKey: string }> }) =>
                     geographies.map((geo: { rsmKey: string }) => (
@@ -975,25 +1049,43 @@ export default function App() {
                   const from = COUNTRY_CENTROIDS[row.origin_code];
                   const to = COUNTRY_CENTROIDS[row.destination_code];
                   if (!from || !to) return null;
+                  const fromPoint = mapProjection(from);
+                  const toPoint = mapProjection(to);
+                  if (!fromPoint || !toPoint) return null;
 
                   return (
-                    <Line
+                    <path
                       key={`${flowKey(row)}-${index}`}
-                      from={from}
-                      to={to}
-                      stroke="rgba(0, 120, 145, 0.44)"
+                      d={getArcPath(
+                        fromPoint as [number, number],
+                        toPoint as [number, number],
+                      )}
+                      stroke={`url(#flow-gradient-${index})`}
                       strokeWidth={0.8 + 6 * (row.barrels / maxBarrels)}
                       strokeLinecap="round"
+                      fill="none"
                     />
                   );
                 })}
 
                 {showMarkers &&
                   sourceMarkerTotals.map((marker) => (
-                    <Marker key={`source-${marker.code}`} coordinates={marker.coords}>
+                    <Marker
+                      key={`source-${marker.code}`}
+                      coordinates={(() => {
+                        if (!overlappingMarkerCodes.has(marker.code)) {
+                          return marker.coords;
+                        }
+                        const offset = getMarkerOffset(marker.barrels);
+                        return [
+                          marker.coords[0] - offset.lon,
+                          marker.coords[1] + offset.lat,
+                        ] as [number, number];
+                      })()}
+                    >
                       <title>{`Source: ${marker.name}: ${marker.barrels.toLocaleString()} barrels`}</title>
                       <circle
-                        r={4 + Math.sqrt(marker.barrels / maxMarkerBarrels) * 11}
+                        r={getMarkerRadius(marker.barrels)}
                         fill="rgba(10, 114, 133, 0.5)"
                         stroke="#ecfeff"
                         strokeWidth={1.2}
@@ -1003,10 +1095,22 @@ export default function App() {
 
                 {showMarkers &&
                   destinationMarkerTotals.map((marker) => (
-                    <Marker key={marker.code} coordinates={marker.coords}>
+                    <Marker
+                      key={marker.code}
+                      coordinates={(() => {
+                        if (!overlappingMarkerCodes.has(marker.code)) {
+                          return marker.coords;
+                        }
+                        const offset = getMarkerOffset(marker.barrels);
+                        return [
+                          marker.coords[0] + offset.lon,
+                          marker.coords[1] - offset.lat,
+                        ] as [number, number];
+                      })()}
+                    >
                       <title>{`Destination: ${marker.name}: ${marker.barrels.toLocaleString()} barrels`}</title>
                       <circle
-                        r={2.5 + Math.sqrt(marker.barrels / maxMarkerBarrels) * 7}
+                        r={getMarkerRadius(marker.barrels)}
                         fill="rgba(205, 81, 39, 0.72)"
                         stroke="#fff7ed"
                         strokeWidth={1}
@@ -1014,6 +1118,31 @@ export default function App() {
                     </Marker>
                   ))}
               </ComposableMap>
+            </div>
+
+            <div className="marker-scale marker-scale-inline">
+              <div className="marker-scale-title">Circle scale</div>
+              {[100000, 500000, 1000000].map((value) => (
+                <div key={value} className="marker-scale-row">
+                  <div className="marker-scale-circles">
+                    <span
+                      className="marker-scale-circle source"
+                      style={{
+                        width: `${getMarkerRadius(value) * 2}px`,
+                        height: `${getMarkerRadius(value) * 2}px`,
+                      }}
+                    />
+                    <span
+                      className="marker-scale-circle destination"
+                      style={{
+                        width: `${getMarkerRadius(value) * 2}px`,
+                        height: `${getMarkerRadius(value) * 2}px`,
+                      }}
+                    />
+                  </div>
+                  <span>{value.toLocaleString()}</span>
+                </div>
+              ))}
             </div>
 
             <div className="timeline-panel">

@@ -56,7 +56,8 @@ select {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(320px, 370px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 370px);
+  grid-template-areas: "workspace controls";
   gap: 20px;
 }
 
@@ -65,6 +66,7 @@ select {
 }
 
 .controls {
+  grid-area: controls;
   position: sticky;
   top: 20px;
   height: fit-content;
@@ -178,16 +180,17 @@ select {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 8px;
 }
 
 .timeline-button {
-  padding: 9px 14px;
+  padding: 6px 10px;
   border: none;
   border-radius: 12px;
   background: #0b7285;
   color: white;
   cursor: pointer;
+  font-size: 0.84rem;
   font-weight: 700;
 }
 
@@ -203,22 +206,22 @@ select {
 
 .timeline-slider {
   width: 100%;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .timeline-endpoints {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 4px;
   color: #5b6c7c;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
 }
 
 .timeline-panel {
-  margin-top: 16px;
-  padding: 16px;
+  margin-top: 8px;
+  padding: 10px 12px;
   border: 1px solid #d2dde6;
   border-radius: 18px;
   background: rgba(254, 253, 250, 0.82);
@@ -286,6 +289,7 @@ select {
 }
 
 .workspace {
+  grid-area: workspace;
   display: grid;
   gap: 20px;
 }
@@ -328,7 +332,7 @@ select {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px 18px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .map-title {
@@ -391,6 +395,61 @@ select {
   height: 640px;
 }
 
+.marker-scale {
+  padding: 14px 12px;
+  border: 1px solid #d2dde6;
+  border-radius: 18px;
+  background: rgba(254, 253, 250, 0.82);
+}
+
+.marker-scale-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 6px;
+  padding: 8px 10px;
+}
+
+.marker-scale-title {
+  color: #405565;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.marker-scale-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 0.8rem;
+}
+
+.marker-scale-circles {
+  position: relative;
+  width: 40px;
+  height: 26px;
+  flex: 0 0 40px;
+}
+
+.marker-scale-circle {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.marker-scale-circle.source {
+  background: rgba(10, 114, 133, 0.5);
+  border: 1.2px solid #ecfeff;
+}
+
+.marker-scale-circle.destination {
+  background: rgba(205, 81, 39, 0.72);
+  border: 1px solid #fff7ed;
+}
+
 .flow-list {
   display: grid;
   gap: 12px;
@@ -449,6 +508,9 @@ select {
 @media (max-width: 1120px) {
   .layout {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "workspace"
+      "controls";
   }
 
   .controls {
@@ -458,6 +520,7 @@ select {
   .stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
 }
 
 @media (max-width: 760px) {
